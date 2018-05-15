@@ -1,0 +1,83 @@
+FROM ubuntu:17.10
+
+# Build with: docker build . -t username:casm_0.2.X
+# Use with: docker run -v $HOSTDIR:$CONTAINERDIR --rm -it username:casm_0.2.X
+# where $HOSTDIR is a directory from your machine and $CONTAINERDIR is where you
+# want to find it in your container,
+#   typically something like "/path/to/MyProject:/root/MyProject"
+
+LABEL description="ubuntu 17.04 test environment"
+
+RUN apt-get update \
+  && apt-get install -y \
+  gcc-6 \
+  g++-6 \
+  automake \
+  autoconf \
+  autoconf-archive \
+  libtool \
+  pkg-config \
+  make \
+  zlib1g-dev \
+  binutils-dev \
+  curl \
+  bzip2 \
+  wget \
+  git \
+  bash-completion \
+  python \
+  scons
+
+# Compile CASM required boost libraries with default g++, c++11
+# Install boost in '/usr/local';
+#   Change --prefix option to install elsewhere
+RUN cd /root \
+  && wget https://dl.bintray.com/boostorg/beta/1.66.0.beta.1/source/boost_1_66_0_b1.tar.bz2 \
+  && tar -xf boost_1_66_0_b1.tar.bz2 \
+  && cd boost_1_66_0 \
+  && ./bootstrap.sh \
+    --prefix=/usr/local \
+    --with-libraries=system,filesystem,program_options,regex,chrono,timer,test \
+  && ./b2 cxxflags="-std=c++11 -O3" \
+  && ./b2 install
+
+RUN cd /root \
+  && wget https://bootstrap.pypa.io/get-pip.py \
+  && python get-pip.py \
+  && pip install \
+    bokeh==0.12.3 \
+    deap \
+    mock \
+    pandas \
+    scikit-learn==0.19 \
+    scipy==0.19 \
+    tornado==4.3
+
+# Install 'pbs' Python package for automating job submission on a cluster
+# installs in /usr/local; set 'BIN' and 'PYINSTALL' to customize install location
+# see https://github.com/prisms-center/pbs
+RUN cd /root \
+  && git clone https://github.com/prisms-center/pbs.git \
+  && cd pbs \
+  && git checkout v2.0.0 \
+  && make install
+
+# Set environment variables to find boost in '/usr/local'
+ENV CASM_BOOST_PREFIX=/usr/local
+
+# Checkout development CASM 0.2.X (90dfbdc3a3590b45d314a678e1e091ad37cfc916)
+RUN cd /root \
+  && git clone https://github.com/prisms-center/CASMcode.git \
+  && cd CASMcode \
+  && git checkout 0.2.X \
+  && CXXFLAGS="-Wno-ignored-attributes -Wno-deprecated-declarations" \
+  && LDFLAGS="-Wl,--no-as-needed" \
+  && scons configure cxxflags="$CXXFLAGS" ldflags="$LDFLAGS" \
+  && scons cxxflags="$CXXFLAGS" ldflags="$LDFLAGS" \
+  && scons install cxxflags="$CXXFLAGS" ldflags="$LDFLAGS"
+
+# RUN cd /root/CASMcode && scons unit
+
+WORKDIR /root
+
+CMD ["/bin/bash"]
